@@ -61,11 +61,32 @@ async fn apply_request_policies(
 	// Extract dynamic metadata for CEL context
 	log.cel.ctx().with_extauthz(req);
 
+	// Debug: Show CEL context BEFORE adding request/source data
+	let exec_before = log.cel.ctx().build().map_err(|_| ProxyError::ProcessingString("failed to build cel context".to_string()))?;
+	if let Ok(request_val) = exec_before.eval(&cel::Expression::new("request").unwrap()) {
+		debug!("CEL context BEFORE with_request(): request = {:?}", request_val);
+	}
+	if let Ok(source_val) = exec_before.eval(&cel::Expression::new("source").unwrap()) {
+		debug!("CEL context BEFORE with_source(): source = {:?}", source_val);
+	}
+
+	// Now add the missing context data
+	log.cel.ctx().with_request(req);
+	log.cel.ctx().with_source(&log.tcp_info, log.tls_info.as_ref());
+
 	let exec = log
 		.cel
 		.ctx()
 		.build()
 		.map_err(|_| ProxyError::ProcessingString("failed to build cel context".to_string()))?;
+
+	// Debug: Show CEL context AFTER adding request/source data
+	if let Ok(request_val) = exec.eval(&cel::Expression::new("request").unwrap()) {
+		debug!("CEL context AFTER with_request(): request = {:?}", request_val);
+	}
+	if let Ok(source_val) = exec.eval(&cel::Expression::new("source").unwrap()) {
+		debug!("CEL context AFTER with_source(): source = {:?}", source_val);
+	}
 
 	if let Some(j) = &policies.authorization {
 		j.apply(&exec)
